@@ -1,0 +1,14 @@
+# Virutalenv, installed Python modules and directories
+.env
+/myvenv
+__pycache__
+*.pyc
+
+# Developer tools
+.svn
+.idea
+.directory
+.vscode
+.history
+
+# Local files and logging
