@@ -3,11 +3,11 @@ import string
 import unittest
 import os
 import random
-from unittest.mock import patch, call, Mock
+from unittest.mock import patch, call, MagicMock
 
 from click.testing import CliRunner
 
-from app import main
+from app import main, read_following_lines
 
 
 class TestTailCLI(unittest.TestCase):
@@ -51,7 +51,7 @@ class TestTailCLI(unittest.TestCase):
 
         return reading_file_path, content
 
-    # @unittest.skip('dev')
+    #@unittest.skip('dev')
     @patch('app.print_line')
     def test_it_reads_n_last_lines_of_file(self, print_line_mock):
         runner = CliRunner()
@@ -59,29 +59,46 @@ class TestTailCLI(unittest.TestCase):
         expected = self.content[-10:]
 
         print_line_mock.assert_has_calls(
-            call(value) for value in expected
+            [call(value) for value in expected]
         )
 
     @patch('app.print_line')
+    @patch('app.open')
     @patch('app.time')
-    def test_it_watches_new_lines_in_file(self, time_mock, print_line_mock):
-        reading_lines = 5
-        watch_file_loop_number = 5
-        runner = CliRunner()
-        reading_file_path = self.file_path
+    def test_it_watches_new_lines_in_file(self, time_mock, open_mock, print_line_mock):
+        input_strings = [
+            '',
+            'QL5UUCPBQ35A2PBZAV27\n',
+            '',
+            'KSDD2BP7HYHAR1OXHWGK\n',
+            '',
+            '',
+            '',
+            'PBQ35A2PP35QNR1OXIKD\n',
+            '',
+            '',
+        ]
+        file_handler = MagicMock()
+        file_handler.readline.side_effect = input_strings
+        open_mock.return_value.__enter__.return_value = file_handler
+
+        watch_file_loop_number = len(input_strings)
         time_mock.sleep.side_effect = ErrorAfter(watch_file_loop_number)
-        with open(reading_file_path, "w") as reading_file:
-            expected = []
-            for _ in range(reading_lines):
-                # CallableExhausted exception should appear in invoke output in 'exception' property
-                runner.invoke(main, [reading_file_path, '-f'])
 
-                random_line = self._get_random_line()
-                reading_file.write(random_line)
-                expected.append(random_line)
+        reading_file_path = self.file_path
+        runner = CliRunner()
+        # CallableExhausted exception should appear in invoke output in 'exception' property
+        runner.invoke(main, [reading_file_path, '-f'])
 
+        empty_lines_count = len([line for line in input_strings if not line])
+
+        self.assertTrue(file_handler.seek.call_count > empty_lines_count)
+
+        open_mock.assert_called_with(reading_file_path)
+
+        lines_with_content = [line for line in input_strings if line]
         print_line_mock.assert_has_calls(
-            call(value) for value in expected
+            [call(value) for value in lines_with_content]
         )
 
 
