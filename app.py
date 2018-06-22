@@ -14,12 +14,16 @@ from typing import Generator
 def main(file_path: str, follow: bool, lines_number: str) -> None:
     print('Hey!!!{} is {}'.format(file_path, follow))
 
-    for line in read_last_lines(file_path=file_path, lines_number=int(lines_number)):
-        print(line)
+    # for line in read_last_lines(file_path=file_path, lines_number=int(lines_number)):
+    #     print_line(line)
 
     if follow:
         for line in read_following_lines(file_path=file_path):
-            print(line)
+            print_line(line)
+
+
+def print_line(line):
+    print(line)
 
 
 def read_last_lines(file_path: str, lines_number: int) -> Generator[str, None, None]:
