@@ -7,7 +7,8 @@ from unittest.mock import patch, call, Mock
 
 from click.testing import CliRunner
 
-from app import main, _watch_new_lines
+from nktail.command_line import main
+from nktail.tail import _watch_new_lines
 
 
 class TestTailCLI(unittest.TestCase):
@@ -51,7 +52,7 @@ class TestTailCLI(unittest.TestCase):
 
         return reading_file_path, content
 
-    @patch('app._write_to_stdin')
+    @patch('nktail.command_line._write_to_stdin')
     def test_it_reads_n_last_lines_of_file(self, print_line_mock):
         runner = CliRunner()
         runner.invoke(main, [self.file_path, '-n', 10])
@@ -61,10 +62,10 @@ class TestTailCLI(unittest.TestCase):
             [call(value) for value in expected]
         )
 
-    @patch('app.open')
-    @patch('app._read_last_lines')
-    @patch('app._watch_new_lines')
-    @patch('app._write_to_stdin')
+    @patch('nktail.command_line.open')
+    @patch('nktail.tail._read_last_lines')
+    @patch('nktail.tail._watch_new_lines')
+    @patch('nktail.command_line._write_to_stdin')
     def test_it_runs_file_watcher(self,
                                   write_to_stdin_mock,
                                   watch_new_lines_mock,
