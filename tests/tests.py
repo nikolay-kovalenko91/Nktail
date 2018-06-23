@@ -7,7 +7,7 @@ from unittest.mock import patch, call, MagicMock
 
 from click.testing import CliRunner
 
-from app import main, read_following_lines
+from app import main
 
 
 class TestTailCLI(unittest.TestCase):
@@ -51,8 +51,8 @@ class TestTailCLI(unittest.TestCase):
 
         return reading_file_path, content
 
-    #@unittest.skip('dev')
-    @patch('app.print_line')
+    @unittest.skip('dev')
+    @patch('app.write_to_output')
     def test_it_reads_n_last_lines_of_file(self, print_line_mock):
         runner = CliRunner()
         runner.invoke(main, [self.file_path, '-n', 10])
@@ -62,7 +62,7 @@ class TestTailCLI(unittest.TestCase):
             [call(value) for value in expected]
         )
 
-    @patch('app.print_line')
+    @patch('app.write_to_output')
     @patch('app.open')
     @patch('app.time')
     def test_it_watches_new_lines_in_file(self, time_mock, open_mock, print_line_mock):
@@ -90,13 +90,14 @@ class TestTailCLI(unittest.TestCase):
         # CallableExhausted exception should appear in invoke output in 'exception' property
         runner.invoke(main, [reading_file_path, '-f'])
 
-        empty_lines_count = len([line for line in input_strings if not line])
-
-        self.assertTrue(file_handler.seek.call_count > empty_lines_count)
-
         open_mock.assert_called_with(reading_file_path)
 
-        lines_with_content = [line for line in input_strings if line]
+        empty_lines_count = len([line for line in input_strings if not line])
+        self.assertTrue(file_handler.seek.call_count > empty_lines_count,
+                        msg='Seems like the app do not use loop of seeking to the end '
+                            'of the file to watch new lines')
+
+        lines_with_content = (line for line in input_strings if line)
         print_line_mock.assert_has_calls(
             [call(value) for value in lines_with_content]
         )
