@@ -3,11 +3,11 @@ import string
 import unittest
 import os
 import random
-from unittest.mock import patch, call, MagicMock
+from unittest.mock import patch, call, Mock
 
 from click.testing import CliRunner
 
-from app import main
+from app import main, _watch_new_lines
 
 
 class TestTailCLI(unittest.TestCase):
@@ -51,8 +51,7 @@ class TestTailCLI(unittest.TestCase):
 
         return reading_file_path, content
 
-    @unittest.skip('dev')
-    @patch('app.write_to_output')
+    @patch('app._write_to_stdin')
     def test_it_reads_n_last_lines_of_file(self, print_line_mock):
         runner = CliRunner()
         runner.invoke(main, [self.file_path, '-n', 10])
@@ -62,44 +61,56 @@ class TestTailCLI(unittest.TestCase):
             [call(value) for value in expected]
         )
 
-    @patch('app.write_to_output')
     @patch('app.open')
-    @patch('app.time')
-    def test_it_watches_new_lines_in_file(self, time_mock, open_mock, print_line_mock):
-        input_strings = [
-            '',
-            'QL5UUCPBQ35A2PBZAV27\n',
-            '',
-            'KSDD2BP7HYHAR1OXHWGK\n',
-            '',
-            '',
-            '',
-            'PBQ35A2PP35QNR1OXIKD\n',
-            '',
-            '',
-        ]
-        file_handler = MagicMock()
-        file_handler.readline.side_effect = input_strings
+    @patch('app._read_last_lines')
+    @patch('app._watch_new_lines')
+    @patch('app._write_to_stdin')
+    def test_it_runs_file_watcher(self,
+                                  write_to_stdin_mock,
+                                  watch_new_lines_mock,
+                                  read_last_lines_mock,
+                                  open_mock):
+        file_handler = Mock()
         open_mock.return_value.__enter__.return_value = file_handler
 
-        watch_file_loop_number = len(input_strings)
-        time_mock.sleep.side_effect = ErrorAfter(watch_file_loop_number)
-
-        reading_file_path = self.file_path
         runner = CliRunner()
-        # CallableExhausted exception should appear in invoke output in 'exception' property
-        runner.invoke(main, [reading_file_path, '-f'])
+        runner.invoke(main, [self.file_path, '-f'])
 
-        open_mock.assert_called_with(reading_file_path)
+        watch_new_lines_mock.assert_called_with(file_handler=file_handler, callback=write_to_stdin_mock)
+
+
+class TestTailFileWatcher(unittest.TestCase):
+    def test_it_watches_new_lines_in_file(self):
+        input_strings = [
+            b'',
+            b'QL5UUCPBQ35A2PBZAV27\n',
+            b'',
+            b'KSDD2BP7HYHAR1OXHWGK\n',
+            b'',
+            b'',
+            b'',
+            b'PBQ35A2PP35QNR1OXIKD\n',
+            b'',
+            b'',
+        ]
+        output_writer = Mock()
+
+        file_handler = Mock()
+        file_handler.readline.side_effect = input_strings
+        watch_file_loop_number = len(input_strings)
+        file_handler.tell.side_effect = ErrorAfter(watch_file_loop_number)
+
+        with self.assertRaises(CallableExhausted):
+            _watch_new_lines(file_handler=file_handler, callback=output_writer)
 
         empty_lines_count = len([line for line in input_strings if not line])
         self.assertTrue(file_handler.seek.call_count > empty_lines_count,
-                        msg='Seems like the app do not use loop of seeking to the end '
-                            'of the file to watch new lines')
+                        msg='The loop of seeking to the end of the file to '
+                            'watch new added lines is not working correctly')
 
         lines_with_content = (line for line in input_strings if line)
-        print_line_mock.assert_has_calls(
-            [call(value) for value in lines_with_content]
+        output_writer.assert_has_calls(
+            [call(value.decode('utf-8')) for value in lines_with_content]
         )
 
 
