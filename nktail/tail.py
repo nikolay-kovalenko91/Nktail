@@ -4,7 +4,7 @@ from typing import BinaryIO, Iterable, Callable
 
 def tail(file_handler: BinaryIO, is_following: bool, number_of_lines: int, output_writer: Callable[[str], None]) -> None:
     for line in _read_last_lines(file_handler=file_handler,
-                                 lines_number=int(number_of_lines)):
+                                 lines_number=number_of_lines):
         output_writer(line)
     if is_following:
         _watch_new_lines(file_handler=file_handler, callback=output_writer)

@@ -16,7 +16,7 @@ def main(file_path: str, follow: bool, number_of_lines: str) -> None:
         with open(file_path, 'rb') as file_handler:
             tail(file_handler=file_handler,
                  is_following=follow,
-                 number_of_lines=number_of_lines,
+                 number_of_lines=int(number_of_lines),
                  output_writer=_write_to_stdin)
     except (IOError, OSError):
         sys.exit("Can not open file {}".format(file_path))

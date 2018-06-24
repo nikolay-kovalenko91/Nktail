@@ -1,14 +1,16 @@
 import shutil
 import string
+import time
 import unittest
 import os
 import random
-from unittest.mock import patch, call, Mock
+import multiprocessing
+from unittest.mock import patch, call
 
 from click.testing import CliRunner
 
+from nktail.tests.sharedmock import SharedMock
 from nktail.command_line import main
-from nktail.tail import _watch_new_lines
 
 
 class TestTailCLI(unittest.TestCase):
@@ -53,83 +55,57 @@ class TestTailCLI(unittest.TestCase):
         return reading_file_path, content
 
     @patch('nktail.command_line._write_to_stdin')
-    def test_it_reads_n_last_lines_of_file(self, print_line_mock):
+    def test_it_reads_n_last_lines_of_file(self, output_writer_mock):
+        lines_to_display_count = 10
         runner = CliRunner()
-        runner.invoke(main, [self.file_path, '-n', 10])
-        expected = self.content[-10:]
+        runner.invoke(main, [self.file_path, '-n', lines_to_display_count])
+        expected = self.content[-lines_to_display_count:]
 
-        print_line_mock.assert_has_calls(
+        output_writer_mock.assert_has_calls(
             [call(value) for value in expected]
         )
 
-    @patch('nktail.command_line.open')
-    @patch('nktail.tail._read_last_lines')
-    @patch('nktail.tail._watch_new_lines')
     @patch('nktail.command_line._write_to_stdin')
-    def test_it_runs_file_watcher(self,
-                                  write_to_stdin_mock,
-                                  watch_new_lines_mock,
-                                  read_last_lines_mock,
-                                  open_mock):
-        file_handler = Mock()
-        open_mock.return_value.__enter__.return_value = file_handler
+    @patch('nktail.tail.time')
+    def test_it_runs_file_watcher(self, time_mock, output_writer_mock):
+        new_lines_to_add_count = 5
+        lines_to_display_count = 10
+        reading_file_path = self.file_path
+        new_lines = [self._get_random_line() for _ in range(new_lines_to_add_count)]
 
-        runner = CliRunner()
-        runner.invoke(main, [self.file_path, '-f'])
+        output_mock = SharedMock()
+        output_writer_mock.side_effect = output_mock
 
-        watch_new_lines_mock.assert_called_with(file_handler=file_handler, callback=write_to_stdin_mock)
+        stop_adding_new_lines_event = multiprocessing.Event()
 
+        def cli_worker(path):
+            runner = CliRunner()
+            runner.invoke(main, [path, '-f', '-n', lines_to_display_count])
+            return
 
-class TestTailFileWatcher(unittest.TestCase):
-    def test_it_watches_new_lines_in_file(self):
-        input_strings = [
-            b'',
-            b'QL5UUCPBQ35A2PBZAV27\n',
-            b'',
-            b'KSDD2BP7HYHAR1OXHWGK\n',
-            b'',
-            b'',
-            b'',
-            b'PBQ35A2PP35QNR1OXIKD\n',
-            b'',
-            b'',
-        ]
-        output_writer = Mock()
+        def writer_worker(path, lines):
+            time.sleep(0.1)  # let the tail app display 10 lines as it starts
+            with open(path, 'a') as reading_file:
+                for line in lines:
+                    reading_file.write(line)
+            time.sleep(0.1)  # let the tail app recognize new added lines and handle it
+            stop_adding_new_lines_event.set()
+            return
 
-        file_handler = Mock()
-        file_handler.readline.side_effect = input_strings
-        watch_file_loop_number = len(input_strings)
-        file_handler.tell.side_effect = ErrorAfter(watch_file_loop_number)
+        cli_thread = multiprocessing.Process(target=cli_worker, args=(reading_file_path,))
+        cli_thread.start()
+        writer_thread = multiprocessing.Process(target=writer_worker, args=(reading_file_path, new_lines))
+        writer_thread.start()
 
-        with self.assertRaises(CallableExhausted):
-            _watch_new_lines(file_handler=file_handler, callback=output_writer)
+        expected = []
+        last_lines = self.content[-lines_to_display_count:]
+        expected.extend(last_lines)
+        expected.extend(new_lines)
 
-        empty_lines_count = len([line for line in input_strings if not line])
-        self.assertTrue(file_handler.seek.call_count > empty_lines_count,
-                        msg='The loop of seeking to the end of the file to '
-                            'watch new added lines is not working correctly')
+        stop_adding_new_lines_event.wait()
+        if stop_adding_new_lines_event.is_set():
+            cli_thread.terminate()
 
-        lines_with_content = (line for line in input_strings if line)
-        output_writer.assert_has_calls(
-            [call(value.decode('utf-8')) for value in lines_with_content]
-        )
-
-
-class ErrorAfter:
-    """
-    Callable that will raise `CallableExhausted` exception after `limit` calls
-    Is used here to test while loops
-    """
-
-    def __init__(self, limit):
-        self.limit = limit
-        self.calls = 0
-
-    def __call__(self, *args, **kwargs):
-        self.calls += 1
-        if self.calls > self.limit:
-            raise CallableExhausted
-
-
-class CallableExhausted(Exception):
-    pass
+            output_mock.assert_has_calls(
+                [call(value) for value in expected]
+            )
