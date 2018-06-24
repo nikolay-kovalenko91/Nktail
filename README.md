@@ -18,4 +18,5 @@ If you run nktail with ```-f``` option, it displays the lines and then monitors 
 ```$ nktail -f <filename>```
 
 ## Running tests
-```$ python setup.py test```
+1) ```$ pip install requirements -r requirements.txt```
+2) ```$ nosetests``` or ```$ python setup.py test```
